@@ -2,43 +2,44 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:dio/dio.dart';
-import 'package:intl/intl.dart';
 
+const IconData kFreezeIcon = Icons.ac_unit;
 
 void main() {
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Freshguard',
+      title: 'Food Spoilage Detector',
       theme: ThemeData(
         fontFamily: 'Roboto',
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: MyHomePage(),
+      home: const MyHomePage(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
+  const MyHomePage({super.key});
+
   @override
   _MyHomePageState createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
-  int _temperature = 0;
-  int _humidity = 0;
-  double _gasSensor = 0.0;
+class _MyHomePageState extends State<MyHomePage> {
+  String _temperature = '';
+  String _humidity = '';
   bool _isLoading = false;
   String _foodStatus = '';
   String _currentTime = '';
-  List<Detection> _detections = [];
-  String _output = '';
+  String _gasSensor = '';
 
   Timer? _timer;
 
@@ -51,7 +52,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   void _updateTime() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
-        _currentTime = DateFormat.yMd().add_jm().format(DateTime.now());
+        _currentTime = DateTime.now().toString();
       });
     });
   }
@@ -61,71 +62,46 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     _timer?.cancel();
     super.dispose();
   }
-  Future<void> _detectFreshness() async {
+
+  Future<void> _fetchData() async {
     setState(() {
       _isLoading = true;
-      _output = '';
     });
 
     try {
-      final dio = Dio();
-      final response = await dio.get('http://192.168.137.1:5001/detect_freshness');
-      print('Response body: ${response.data}');
+      final response = await http.get(Uri.parse(
+          'https://api.openweathermap.org/data/2.5/weather?q=London&appid=f596234f7b2eb18b4a28194da7d158a4&units=metric'));
 
       if (response.statusCode == 200) {
-        final jsonData = response.data;
-        setState(() {
-          _detections = (jsonData['detections'] as List?)
-              ?.map((jsonDetection) => Detection.fromJson(jsonDetection))
-              .toList() ?? [];
-          _output = jsonData['output'] ?? '';
-          _isLoading = false;
-        });
+        final jsonData = jsonDecode(response.body);
+        final temperature = jsonData['main']['temp'];
+        final humidity = jsonData['main']['humidity'];
 
         setState(() {
-          _temperature = jsonData['temperature'] ?? 0;
-          _humidity = jsonData['humidity'] ?? 0;
-          _gasSensor = jsonData['gas_sensor'] ?? 0.0;
+          _temperature = '$temperature°C';
+          _humidity = '$humidity%';
 
-          double cameraTemperature = 50.0;
-          double cameraHumidity = 70.0;
-          double cameraGasSensor = 100.0;
-
-          double freshness = 0.0;
-
-          if (_temperature > 0 && _humidity > 0 && _gasSensor > 0) {
-            if (_temperature < cameraTemperature &&
-                _humidity < cameraHumidity &&
-                _gasSensor < cameraGasSensor) {
-              freshness = 1.0; // Fresh
-            } else if (_temperature > cameraTemperature &&
-                _humidity > cameraHumidity &&
-                _gasSensor > cameraGasSensor) {
-              freshness = 0.0; // Spoiled
-            } else {
-              freshness = 0.5; // Partially spoiled
-            }
+          if (temperature < 10 && humidity < 60) {
+            _foodStatus = 'It is fresh';
+          } else {
+            _foodStatus = 'It is spoilt';
           }
 
-          _foodStatus = freshness == 1.0
-              ? 'Fresh'
-              : freshness == 0.0
-              ? 'Spoiled'
-              : 'Partially spoiled';
+          if (temperature > 20) {
+            _gasSensor = 'Gas Sensor: High';
+          } else {
+            _gasSensor = 'Gas Sensor: Low';
+          }
         });
       } else {
-        setState(() {
-          _output = 'Failed to detect freshness. Please try again.';
-          _isLoading = false;
-        });
+        throw Exception('Failed to load data');
       }
-    } catch (e) {
+    } catch (error) {
+     // print(error);
+    } finally {
       setState(() {
-        _output = 'An error occurred. Please try again.';
         _isLoading = false;
       });
-
-      print('Error: $e');
     }
   }
 
@@ -133,27 +109,23 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Freshguard',),
-        centerTitle: true,
-        backgroundColor: Colors.white70,
-        leading: Image.asset('lib/assets/logo.png', height: 132, width: 120),
+        title: const Text('Food Spoilage Detector'),
+        backgroundColor: Colors.blue,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-
           children: [
             const SizedBox(height: 16),
             Text(
-              'Date and Time: ${DateFormat.yMd().add_jm().format(DateTime.now())}',
+              'Date and Time: $_currentTime',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white38,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
@@ -170,137 +142,107 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Sensor Values',
+                      'Food Spoilage Detector',
                       style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 20),
-                    if (_isLoading) ...[
-                      const CircularProgressIndicator(),
-                    ] else ...[
-                      Column(
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.thermostat,
-                                size: 24,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(width: 28),
-                              Text(
-                                'Temperature:',
-                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '$_temperature°C',
-                            style: const TextStyle(fontSize: 20),
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.water_drop_rounded,
-                                size: 24,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(width: 28),
-                              Text(
-                                'Humidity:',
-                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '$_humidity%',
-                            style: const TextStyle(fontSize: 20),
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.gas_meter_rounded,
-                                size: 24,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(width: 28),
-                              Text(
-                                'Gas Sensor:',
-                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '$_gasSensor',
-                            style: const TextStyle(fontSize: 20),
-                          ),
-                        ],
-                      ),
-                    ],
+                    _isLoading
+                        ? const CircularProgressIndicator()
+                        : Column(
+                      children: [
+                        const Text(
+                          'Temperature:',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _temperature,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Humidity:',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _humidity,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Gas Sensor:',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _gasSensor,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'The Detected Food Is:',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _foodStatus,
+                          style: TextStyle(fontSize: 20, color: _foodStatus == 'It is fresh'? Colors.green : Colors.red),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            Text(
-              'Detections:',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            if (_detections.isEmpty) ...[
-              const Text('No detections'),
-            ] else ...[
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _detections.length,
-                itemBuilder: (context, index) {
-                  final detection = _detections[index];
-                  return Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: ListTile(
-                      leading: Icon(
-                        detection.isSpoiled ? Icons.warning : Icons.check,
-                        color: detection.isSpoiled ? Colors.red : Colors.green,
-                      ),
-                      title: Text(detection.label),
-                      subtitle: Text('Freshness: ${detection.freshness}'),
-                    ),
-                  );
-                },
+            ElevatedButton(
+              onPressed: _fetchData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-            ],
-            const SizedBox(height: 20),
-            Text(
-              'Food Status: ${_foodStatus.toUpperCase()}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              child: const Text('Check Food Spoilage'),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _isLoading ?null : _detectFreshness,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FoodStorageTips()),
+                );
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               ),
-              child: const Text(
-                'Detect Food Freshness',
-                style: TextStyle(fontSize: 20, color: Colors.white),
-              ),
+              child: const Text('Food Storage Tips'),
             ),
             const SizedBox(height: 20),
-            Text(
-              _output,
-              style: const TextStyle(fontSize: 18),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) =>const UpcomingExpirationsList()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('Upcoming Expirations'),
             ),
           ],
         ),
@@ -309,18 +251,279 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   }
 }
 
-class Detection {
-  final String label;
-  final double freshness;
-  final bool isSpoiled;
+class FoodStorageTips extends StatelessWidget {
+  const FoodStorageTips({super.key});
 
-  Detection({required this.label, required this.freshness, required this.isSpoiled});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Food Storage Tips'),
+        backgroundColor: Colors.blue,
+      ),
+      body: Container(
+        color: Colors.grey[200],
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.5),
+                    spreadRadius: 2,
+                    blurRadius: 5,
+                    offset: const Offset(0,3),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      'Refrigerate Properly',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Keep your refrigerator at the optimal temperature (below 40°F) to extend the shelf life of your food.',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.5),
+                    spreadRadius: 2,
+                    blurRadius: 5,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      'Freeze for Longer Storage',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Freeze items you wont use right away to prevent spoilage. Proper freezing can keep food fresh for months.',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.5),
+                    spreadRadius: 2,
+                    blurRadius: 5,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      'Check Expiration Dates',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Always check the expiration dates on your food and use items before they go bad.',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-  factory Detection.fromJson(Map<String, dynamic> json) {
-    return Detection(
-      label: json['label'] ?? '',
-      freshness: json['freshness'] ?? 0.0,
-      isSpoiled: json['is_spoiled'] ?? false,
+class UpcomingExpirationsList extends StatelessWidget {
+  const UpcomingExpirationsList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    List<Map<String, dynamic>> foods = [
+      {'name': 'Apple', 'expiryDate': '2021-09-25'},
+      {'name': 'Orange', 'expiryDate': '2021-08-12'},
+      {'name': 'Milk', 'expiryDate': '2021-07-10'},
+      {'name': 'Eggs', 'expiryDate': '2021-07-15'},
+      {'name': 'Pasta', 'expiryDate': '2021-07-01'},
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Upcoming Expirations'),
+        backgroundColor: Colors.blue,
+      ),
+      body: ListView.builder(
+        itemCount: foods.length,
+        itemBuilder: (context, index) {
+          return Card(
+            color: Colors.white,
+            margin: const EdgeInsets.all(10),
+            child: ListTile(
+              leading: const Icon(kFreezeIcon),
+              title: Text(foods[index]['name']),
+              subtitle: Text('Expires on: ${foods[index]['expiryDate']}'),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class StorageInfo extends StatelessWidget {
+  const StorageInfo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Storage Information'),
+        backgroundColor: Colors.blue,
+      ),
+      body: ListView(
+        children: const [
+           Card(
+            color: Colors.white,
+            margin: EdgeInsets.all(10),
+            child: ListTile(
+              leading: Icon(Icons.add_circle),
+              title: Text('Fridge'),
+              subtitle: Text('For items that need to be kept cold.'),
+            ),
+          ),
+           Card(
+            color: Colors.white,
+            margin: EdgeInsets.all(10),
+            child: ListTile(
+              leading: Icon(kFreezeIcon),
+              title: Text('Freezer'),
+              subtitle: Text('For items that need to be kept frozen.'),
+            ),
+          ),
+           Card(
+            color: Colors.white,
+            margin: EdgeInsets.all(10),
+            child: ListTile(
+              leading: Icon(Icons.timer),
+              title: Text('Expiration Dates'),
+              subtitle: Text('Keep track of when your food items will expire.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class RecipeCards extends StatelessWidget {
+  const RecipeCards({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Recipes'),
+        backgroundColor: Colors.blue,
+      ),
+      body: GridView.builder(
+        itemCount: 5,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 3 / 2,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+        ),
+        itemBuilder: (context, index) {
+          return Card(
+            color: Colors.white,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.network(
+                  'https://source.unsplash.com/random?food',
+                  width: 100,
+                  height: 100,
+                ),
+                Text('Recipe ${index + 1}'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class Home extends StatelessWidget {
+  const Home({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Home'),
+        backgroundColor: Colors.blue,
+      ),
+      body: const SingleChildScrollView(
+        child: Column(
+          children: [
+            BannerButton('FoodStorage Tips',  FoodStorageTips()),
+            BannerButton('Upcoming Expirations', UpcomingExpirationsList()),
+            BannerButton('Storage Information', StorageInfo()),
+            BannerButton('Recipes', RecipeCards()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class BannerButton extends StatelessWidget {
+  final String _title;
+  final Widget _destination;
+
+  const BannerButton(this._title, this._destination, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: ElevatedButton(
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => _destination));
+        },
+        child: Text(_title),
+      ),
     );
   }
 }
