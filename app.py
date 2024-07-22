@@ -1,5 +1,4 @@
 import random
-
 import cv2
 import numpy as np
 import requests
@@ -187,6 +186,8 @@ def detect_freshness_webcam():
         ret, frame = cap.read()
         if not ret:
             break
+
+        # Detect objects using YOLOv5
         results = model(Image.fromarray(frame))
         labels = results.names
         pred_boxes = results.xyxy[0][:, :4]
@@ -196,16 +197,8 @@ def detect_freshness_webcam():
         for label, bbox in zip(results.xyxy[0][:, -1].int(), pred_boxes):
             label = int(label)
             class_name = labels[label]
-            if class_name in ['apple',
-                              'banana',
-                              'orange',
-                              'sandwich',
-                              'broccoli',
-                              'carrot',
-                              'hot dog',
-                              'pizza',
-                              'donut',
-                              'cake']:
+            if class_name in ['apple', 'banana', 'orange', 'sandwich', 'broccoli', 'carrot', 'hot dog', 'pizza',
+                              'donut', 'cake']:
                 bbox = bbox.tolist()
                 cropped_image = frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
                 freshness_score = detect_freshness(cropped_image, class_name)
@@ -214,26 +207,32 @@ def detect_freshness_webcam():
                 detection = {
                     'label': class_name,
                     'freshness': freshness_score,
-                    'is_spoiled': is_spoiled}
+                    'is_spoiled': is_spoiled
+                }
                 detections.append(detection)
-
                 detected_fruits.append(class_name)
 
-        city = 'Delhi'
-        country = 'India'
-        api_key = "f596234f7b2eb18b4a28194da7d158a4"
-        weather_url = requests.get(
-            f'http://api.openweathermap.org/data/2.5/weather?appid={api_key}&q={city},{country}&units=imperial')
-        weather_data = weather_url.json()
-        temp = round(weather_data['main']['temp'])
-        temp = int((temp - 32) * 5 / 9)
-        humidity = weather_data['main']['humidity']
-        gas_sensor_reading = random.randint(0, 100)
 
-        if detections:
-            response = jsonify(
-                {'detections': detections, 'temperature': temp, 'humidity': humidity, 'gas_sensor': gas_sensor_reading})
-            return Response(response.data, mimetype='application/json')
+        esp32_url = 'http://192.168.137.131:8080/sensors'
+        try:
+            response = requests.get(esp32_url)
+            sensor_data = response.json()
+            temp = round(sensor_data['temperature'])
+            humidity = round(sensor_data['humidity'])
+            gas_sensor_reading = sensor_data['gas_sensor']
+
+            if detections:
+                response = jsonify({
+                    'detections': detections,
+                    'temperature': temp,
+                    'humidity': humidity,
+                    'gas_sensor': gas_sensor_reading
+                })
+                return Response(response.data, mimetype='application/json')
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching sensor data from ESP32: {e}")
+            return Response(f"Error fetching sensor data from ESP32: {e}", status=500)
 
     cap.release()
     cv2.destroyAllWindows()
@@ -248,5 +247,6 @@ def get_detected_fruits():
 
 if __name__ == "__main__":
     app.run(debug=False, host='192.168.137.1', port=5001)
+
 
 get_detected_fruits()
