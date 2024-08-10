@@ -1,4 +1,3 @@
-import random
 import cv2
 import numpy as np
 import requests
@@ -28,10 +27,6 @@ def check_spoilage(cropped_image):
     mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
     mask_green = cv2.inRange(hsv, lower_green, upper_green)
     mask_brown = cv2.inRange(hsv, lower_brown, upper_brown)
-
-    yellow_pixels = cv2.countNonZero(mask_yellow)
-    green_pixels = cv2.countNonZero(mask_green)
-    brown_pixels = cv2.countNonZero(mask_brown)
 
     total_pixels = img.shape[0] * img.shape[1]
     yellow_percentage = (yellow_pixels / total_pixels) * 100
@@ -191,7 +186,7 @@ def detect_freshness_webcam():
         results = model(Image.fromarray(frame))
         labels = results.names
         pred_boxes = results.xyxy[0][:, :4]
-        detections = []
+       
 
         detected_fruits = []
         for label, bbox in zip(results.xyxy[0][:, -1].int(), pred_boxes):
@@ -212,27 +207,7 @@ def detect_freshness_webcam():
                 detections.append(detection)
                 detected_fruits.append(class_name)
 
-
         esp32_url = 'http://192.168.137.131:8080/sensors'
-        try:
-            response = requests.get(esp32_url)
-            sensor_data = response.json()
-            temp = round(sensor_data['temperature'])
-            humidity = round(sensor_data['humidity'])
-            gas_sensor_reading = sensor_data['gas_sensor']
-
-            if detections:
-                response = jsonify({
-                    'detections': detections,
-                    'temperature': temp,
-                    'humidity': humidity,
-                    'gas_sensor': gas_sensor_reading
-                })
-                return Response(response.data, mimetype='application/json')
-
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching sensor data from ESP32: {e}")
-            return Response(f"Error fetching sensor data from ESP32: {e}", status=500)
 
     cap.release()
     cv2.destroyAllWindows()
@@ -247,6 +222,5 @@ def get_detected_fruits():
 
 if __name__ == "__main__":
     app.run(debug=False, host='192.168.137.1', port=5001)
-
 
 get_detected_fruits()
