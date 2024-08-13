@@ -1,0 +1,98 @@
+#include <WiFi.h>
+#include <WiFiServer.h>
+#include <DHT.h>
+#include <driver/adc.h>
+
+
+const char* ssid = "LAPTOP-ANSKEL6V 6903";
+const char* password = "5#42Q62g";
+
+
+#define DHTPIN 18     
+#define DHTTYPE DHT11 
+
+DHT dht(DHTPIN, DHTTYPE);
+
+
+#define MQ4_ADC_CHANNEL ADC1_CHANNEL_4
+
+WiFiServer server(8080); 
+
+void setup() {
+  Serial.begin(9600);
+
+  
+  IPAddress local_IP(192, 168, 137, 131);
+  IPAddress gateway(192, 168, 137, 1);
+  IPAddress subnet(255, 255, 255, 0);
+
+  WiFi.config(local_IP, gateway, subnet);
+
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+
+  Serial.println("Connected to WiFi");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.println("Initializing DHT11 sensor...");
+  dht.begin();
+
+  adc1_config_channel_atten(MQ4_ADC_CHANNEL, ADC_ATTEN_DB_11);
+  adc1_config_width(ADC_WIDTH_BIT_12);
+
+  server.begin();
+  Serial.println("Server started");
+}
+
+void loop() {
+  WiFiClient client = server.available(); 
+
+  if (client) {
+    Serial.println("Client connected");
+
+   
+    String request = client.readStringUntil('\r');
+
+    
+    if (request.indexOf("GET /sensors") != -1) {
+      
+      float temperature = dht.readTemperature();
+      float humidity = dht.readHumidity();
+
+      
+      int adcValue = adc1_get_raw(MQ4_ADC_CHANNEL);
+
+      
+      float voltage = (adcValue * 3.3) / 4095.0;
+
+      
+      float scaledVoltage = voltage / 3.3;
+
+      
+      int gasLevel = round(scaledVoltage * 100.0);
+
+      
+      String jsonString = "{\"temperature\":";
+      jsonString += String(temperature);
+      jsonString += ",\"humidity\":";
+      jsonString += String(humidity);
+      jsonString += ",\"gas_sensor\":";
+      jsonString += String(gasLevel);
+      jsonString += "}";
+
+      
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: application/json");
+      client.println();
+      client.println(jsonString);
+    } else {
+      client.println("HTTP/1.1 404 Not Found");
+    }
+
+    client.stop();
+  }
+}
