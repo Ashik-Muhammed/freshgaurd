@@ -18,7 +18,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
 
-  static const apiKey = "AIzaSyBiKtsRipcomrfHHQvSh6m7sQNqJwSX8po";
+  static const apiKey ="";
 
   final model = GenerativeModel(model: 'gemini-pro', apiKey: apiKey);
 
@@ -225,4 +225,5 @@ class Messages extends StatelessWidget {
       ),
     );
   }
+
 }
